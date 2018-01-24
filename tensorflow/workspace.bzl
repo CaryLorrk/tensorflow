@@ -744,3 +744,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "46187270ca04ff8109980f45c3438fabfe48695e163789096eb82ee097ffe685",
       strip_prefix = "bazel-toolchains-b2b4b38433bf2d1159360855ea4004378308711b",
   )
+
+  native.new_local_repository(
+      name = "woops_repo",
+      path = "./../../../src",
+      build_file = str(Label("//third_party:woops.BUILD"))
+  )
+

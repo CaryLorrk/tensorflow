@@ -48,6 +48,11 @@ import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
 
+from tensorflow.python.pywrap_tensorflow import woops_initialize_from_file
+from tensorflow.python.pywrap_tensorflow import woops_clock
+from tensorflow.python.pywrap_tensorflow import woops_force_sync
+from tensorflow.python.pywrap_tensorflow import woops_register_trainable
+
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
 from tensorflow.core.framework.node_def_pb2 import *
@@ -253,6 +258,10 @@ _allowed_symbols.extend([
     'test',
     'train',
     'user_ops',
+    'woops_initialize_from_file',
+    'woops_clock',
+    'woops_force_sync',
+    'woops_register_trainable',
 ])
 
 # Variables framework.versions:

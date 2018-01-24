@@ -25,6 +25,11 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
+#include "tensorflow/core/kernels/woops_util.h"
+#include "util/storage/dense_storage.h"
+#include "woops.h"
+#include "tf_dense.h"
+
 namespace tensorflow {
 
 // Resource stored by variables in the resource manager.
@@ -60,6 +65,38 @@ class VariableOp : public OpKernel {
       OP_REQUIRES_OK(
           ctx,
           cinfo_.Init(ctx->resource_manager(), def(), true /* use name() */));
+
+      auto creator = [this](Var** var) {
+        *var = new Var(dtype_);
+        (*var)->tensor()->set_shape(shape_);
+        return Status::OK();
+      };
+
+      Var* var;
+      OP_REQUIRES_OK(ctx,
+                     cinfo_.resource_manager()->LookupOrCreate<Var>(
+                         cinfo_.container(), cinfo_.name(), &var, creator));
+
+      trainable_ = woops::CheckTrainable(cinfo_.name());
+      if (trainable_) {
+          id_ = woops::Tablename2Id(cinfo_.name());
+          woops::TableConfig config;
+          config.id = id_;
+          config.size = shape_.num_elements();
+          config.element_size = sizeof(float);
+          {
+              auto mu = var->mu();
+              auto tensor = var->tensor();
+              auto stream = ctx->device()->tensorflow_gpu_device_info()->stream;
+              config.cache_constructor = [mu, tensor, stream](size_t size){
+                  return std::unique_ptr<woops::Storage>(new woops::TfDense<float>(mu, tensor, stream));
+              };
+          }
+          config.server_storage_constructor = [](size_t size){
+              return std::unique_ptr<woops::Storage>(new woops::DenseStorage<float>(size));
+          };
+          woops::CreateTable(config);
+      }
       initialized_ = true;
     }
     auto creator = [this](Var** var) {
@@ -67,10 +104,16 @@ class VariableOp : public OpKernel {
       (*var)->tensor()->set_shape(shape_);
       return Status::OK();
     };
+
     Var* var;
     OP_REQUIRES_OK(ctx,
                    cinfo_.resource_manager()->LookupOrCreate<Var>(
                        cinfo_.container(), cinfo_.name(), &var, creator));
+
+    if (trainable_) {
+      woops::Sync(id_);
+    }
+
     // Output a reference to our tensor, so it may be updated.
     //
     // As long as the resource manager hasn't been cleared the ref we return
@@ -94,6 +137,8 @@ class VariableOp : public OpKernel {
  private:
   DataType dtype_;
   TensorShape shape_;
+  bool trainable_;
+  int id_;
 
   mutex init_mu_;
   ContainerInfo cinfo_ GUARDED_BY(init_mu_);

@@ -50,3 +50,4 @@ limitations under the License.
 %include "tensorflow/python/grappler/cost_analyzer.i"
 %include "tensorflow/python/grappler/model_analyzer.i"
 
+%include "tensorflow/python/woops/woops.i"

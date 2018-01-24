@@ -2993,6 +2993,7 @@ tf_py_wrap_cc(
         ":py_record_writer_lib",
         ":python_op_gen",
         ":tf_session_helper",
+        ":woops_helper",
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:python_api",
@@ -4365,4 +4366,12 @@ pyx_library(
     srcs = ["framework/fast_tensor_util.pyx"],
     py_deps = ["//tensorflow/python:util"],
     deps = ["//third_party/py/numpy:headers"],
+)
+
+cc_library(
+    name = "woops_helper",
+    srcs= ["woops/woops_helper.cc"],
+    hdrs = ["woops/woops_helper.h"],
+    deps = ["@woops_repo//:woops",
+            "//tensorflow/core/kernels:woops_util"],
 )

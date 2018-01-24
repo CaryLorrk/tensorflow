@@ -1544,6 +1544,7 @@ class Saver(object):
     if os.path.split(latest_filename)[0]:
       raise ValueError("'latest_filename' must not contain path components")
 
+    save_path = "%s-%.4f" %(save_path, time.time())
     if global_step is not None:
       if not isinstance(global_step, compat.integral_types):
         global_step = training_util.global_step(sess, global_step)

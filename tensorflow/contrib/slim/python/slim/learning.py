@@ -757,10 +757,12 @@ def train(train_op,
         if is_chief and sync_optimizer is not None:
           sv.start_queue_runners(sess, chief_queue_runner)
           sess.run(init_tokens_op)
+        tf.woops_force_sync()
         try:
           while not sv.should_stop():
             total_loss, should_stop = train_step_fn(
                 sess, train_op, global_step, train_step_kwargs)
+            tf.woops_clock()
             if should_stop:
               logging.info('Stopping Training.')
               sv.request_stop()

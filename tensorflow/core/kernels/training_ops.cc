@@ -27,6 +27,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/sycl/sycl_util.h"
 #endif  // TENSORFLOW_USE_SYCL
 
+#include "tensorflow/core/kernels/woops_util.h"
+#include "woops.h"
+#include "util/storage/dense_storage.h"
+
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
@@ -494,6 +498,51 @@ TF_CALL_double(REGISTER_SYCL_KERNELS);
 #endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_CPU_KERNELS
+#undef REGISTER_KERNELS
+
+template<typename T>
+class ApplyGradientDescentPsOp : public OpKernel {
+ public:
+    explicit ApplyGradientDescentPsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("var_name", &var_name_));
+      id_ = woops::Tablename2Id(var_name_);
+    }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& alpha = ctx->input(0);
+    OP_REQUIRES(ctx, IsLegacyScalar(alpha.shape()),
+                errors::InvalidArgument("alpha is not a scalar: ",
+                                        alpha.shape().DebugString()));
+    const auto flat_alpha = alpha.flat<T>();
+    const T* local_alpha = (T*)flat_alpha.data();
+
+    const Tensor& delta = ctx->input(1);
+    const auto flat_delta = delta.flat<T>();
+    const T* local_delta = (T*)flat_delta.data();
+
+    size_t size = delta.NumElements();
+    auto update = std::vector<float>(size);
+    for(size_t i = 0; i < size; ++i) {
+        update[i] = local_alpha[0] * local_delta[i] * -1;
+    }
+    woops::DenseStorage<float> s_update(size);
+    s_update.Assign(update.data());
+    woops::Update(id_, s_update);
+  }
+ private:
+  std::string var_name_;
+  int id_;
+};
+
+#define REGISTER_KERNELS(T)                                                \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("ApplyGradientDescentPs").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      ApplyGradientDescentPsOp<T>);
+
+REGISTER_KERNELS(float);
+REGISTER_KERNELS(double);
+
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T>

@@ -103,6 +103,16 @@ use_locking: If `True`, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
 
+REGISTER_OP("ApplyGradientDescentPs")
+      .Input("alpha: T")
+      .Input("delta: T")
+      .Attr("T: numbertype")
+      .Attr("var_name: string")
+      .SetShapeFn([](InferenceContext* c){return Status::OK();})
+      .Doc(R"doc(
+  Update delta to parameter server.
+      )doc");
+
 static Status ApplyProximalGradientDescentShapeFn(InferenceContext* c,
                                                   bool sparse) {
   ShapeHandle unused;

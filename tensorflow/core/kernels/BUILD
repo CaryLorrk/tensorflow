@@ -3744,6 +3744,24 @@ cc_library(
     ],
 )
 
+cc_library(
+    name="tf_dense",
+    hdrs= ["tf_dense.h"],
+    deps= ["//third_party/eigen3",
+          "//tensorflow/core:framework",
+          "@woops_repo//:woops"],
+)
+
+cc_library(
+    name = "woops_util",
+    hdrs = ["woops_util.h"],
+    srcs = ["woops_util.cc"],
+    copts = tf_copts() + ["-std=c++14"],
+    visibility = ["//visibility:public"],
+    deps = ["//third_party/eigen3",
+            "//tensorflow/core:framework"],
+)
+
 STATE_DEPS = [
     ":assign_op",
     ":bounds_check",
@@ -3753,6 +3771,9 @@ STATE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:state_ops_op_lib",
+    "@woops_repo//:woops",
+    ":woops_util",
+    ":tf_dense",
 ] + if_sycl(["//tensorflow/core:sycl_runtime"])
 
 tf_kernel_library(
@@ -3909,6 +3930,7 @@ tf_kernel_library(
         ":bounds_check",
         ":training_op_helpers",
         ":variable_ops",
+        ":woops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:training_ops_op_lib",

@@ -35,6 +35,9 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
 from tensorflow.python.util import nest
 
+import tensorflow as tf
+from tensorflow.python.training import training_ops
+
 
 def _get_variable_for(v):
   """Returns the ResourceVariable responsible for v, or v if not necessary."""
@@ -473,6 +476,7 @@ class Optimizer(object):
     with ops.control_dependencies(None):
       self._create_slots([_get_variable_for(v) for v in var_list])
     update_ops = []
+    update_ps_ops = []
     with ops.name_scope(name, self._name) as name:
       self._prepare()
       for grad, var, processor in converted_grads_and_vars:
@@ -484,6 +488,11 @@ class Optimizer(object):
         scope_name = var.op.name if context.in_graph_mode() else ""
         with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
           update_ops.append(processor.update_op(self, grad))
+        with ops.name_scope("update_ps_" + scope_name):
+          update_ps_ops.append(training_ops.apply_gradient_descent_ps(
+              math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+              grad,
+              var_name=var.op.name))
       if global_step is None:
         apply_updates = self._finish(update_ops, name)
       else:
@@ -495,7 +504,8 @@ class Optimizer(object):
       if apply_updates not in train_op:
         train_op.append(apply_updates)
 
-      return apply_updates
+      update_ps_ops.append(apply_updates)
+      return tf.group(*update_ps_ops)
 
   def get_slot(self, var, name):
     """Return a slot named `name` created for `var` by the Optimizer.

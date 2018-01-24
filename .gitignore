@@ -17,3 +17,5 @@ cmake_build/
 .idea/**
 /build/
 /tensorflow/core/util/version_info.cc
+tensorflow-1.4.1-cp27-cp27mu-linux_x86_64.whl
+tensorflow/python/framework/fast_tensor_util.cpp
