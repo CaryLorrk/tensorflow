@@ -16,7 +16,7 @@ cc_library(
     srcs = glob(["**/*.cc"]),
     hdrs = glob(["**/*.h"]),
     includes = [ "." ],
-    copts = ["-std=c++14"],
+    copts = ["-std=c++14 -O3"],
     deps = ["@grpc//:grpc++_unsecure",
             ":woops_grpc"],
     visibility = ["//visibility:public"],
