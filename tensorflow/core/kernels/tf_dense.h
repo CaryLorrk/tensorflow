@@ -31,6 +31,7 @@ public:
     size_t GetSize() const override;
     const void* Serialize() const override;
     std::map<Hostid, Bytes> Encoding(const Placement::Partitions& partitions) const override;
+    void Decoding(const Bytes& bytes, size_t offset = 0, size_t size = -1) override;
     void Assign(const void* data, size_t offset = 0, size_t size = -1) override;
     void Update(const void* delta) override;
     std::string ToString() const override;
@@ -64,6 +65,11 @@ std::map<Hostid, Bytes> TfDense<T>::Encoding(const Placement::Partitions& partit
         ret[server] = std::string{(char*)&cpu_cache_[part.begin], (char*)&cpu_cache_[part.end]};
     }
     return ret;
+}
+
+template<typename T>
+void TfDense<T>::Decoding(const Bytes& bytes, size_t offset, size_t size) {
+    Assign(bytes.data(), offset, bytes.size()/sizeof(T));
 }
 
 template<typename T>
