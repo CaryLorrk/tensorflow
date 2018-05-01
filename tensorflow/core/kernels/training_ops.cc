@@ -512,8 +512,8 @@ class ApplyGradientDescentPsOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& alpha = ctx->input(0);
     OP_REQUIRES(ctx, IsLegacyScalar(alpha.shape()),
-                errors::InvalidArgument("alpha is not a scalar: ",
-                                        alpha.shape().DebugString()));
+            errors::InvalidArgument("alpha is not a scalar: ",
+                alpha.shape().DebugString()));
     const auto flat_alpha = alpha.flat<T>();
     const T* local_alpha = (T*)flat_alpha.data();
 
@@ -527,7 +527,7 @@ class ApplyGradientDescentPsOp : public OpKernel {
         update[i] = local_alpha[0] * local_delta[i] * -1;
     }
     woops::DenseStorage<float> s_update(size);
-    s_update.Assign(update.data());
+    s_update.Assign(update.data(), update.size());
     woops::Update(id_, s_update);
   }
  private:

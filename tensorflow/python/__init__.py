@@ -50,7 +50,7 @@ from tensorflow.python import pywrap_tensorflow
 
 from tensorflow.python.pywrap_tensorflow import woops_initialize_from_file
 from tensorflow.python.pywrap_tensorflow import woops_clock
-from tensorflow.python.pywrap_tensorflow import woops_force_sync
+from tensorflow.python.pywrap_tensorflow import woops_start
 from tensorflow.python.pywrap_tensorflow import woops_register_trainable
 
 # Protocol buffers
@@ -260,7 +260,7 @@ _allowed_symbols.extend([
     'user_ops',
     'woops_initialize_from_file',
     'woops_clock',
-    'woops_force_sync',
+    'woops_start',
     'woops_register_trainable',
 ])
 

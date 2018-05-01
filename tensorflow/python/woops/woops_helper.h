@@ -7,7 +7,7 @@ namespace tensorflow
 {
 void woops_initialize_from_file(std::string configfile);
 void woops_clock();
-void woops_force_sync();
+void woops_start();
 void woops_register_trainable(const char* name);
 } /* tensorflow */ 
 

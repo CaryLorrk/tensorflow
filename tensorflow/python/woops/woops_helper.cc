@@ -15,8 +15,8 @@ void woops_clock() {
     woops::Clock();
 }
 
-void woops_force_sync() {
-    woops::ForceSync();
+void woops_start() {
+    woops::Start();
 }
 
 void woops_register_trainable(const char* name) {

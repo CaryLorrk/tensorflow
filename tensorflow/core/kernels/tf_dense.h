@@ -27,22 +27,24 @@ class TfDense: public Storage
 {
 public:
     TfDense(tf::mutex* mu, tf::Tensor* tensor, Stream* stream);
+
     void Zerofy() override;
-    size_t GetSize() const override;
-    const void* Serialize() const override;
-    std::map<Hostid, Bytes> Encoding(const Placement::Partitions& partitions) const override;
-    void Decoding(const Bytes& bytes, size_t offset = 0, size_t size = -1) override;
-    void Assign(const void* data, size_t offset = 0, size_t size = -1) override;
-    void Update(const void* delta) override;
+    Bytes Encode() const override;
+    std::map<Hostid, Bytes> Encode(const Placement::Partitions& partitions) const override;
+    void Decode(const Bytes& bytes, size_t offset = 0, DecodingType decoding_type = DecodingType::UPDATE) override;
+    void Assign(const Bytes& bytes, size_t offset = 0) override;
+    void Update(const Bytes& bytes, size_t offset = 0) override;
     std::string ToString() const override;
 
 private:
     tf::mutex* mu_;
     tf::Tensor* tensor_;
     Stream* stream_;
-    mutable std::unique_ptr<T[]> cpu_cache_;
+    mutable std::vector<T> cpu_cache_;
+    mutable std::mutex cpu_cache_mu_;
 
-    void CopyToCpuCache_() const;
+    void copy_to_gpu_memory(const void* src, size_t size = 0, size_t offset = 0);
+    void copy_to_cpu_memory(void* dst, size_t size = 0, size_t offset = 0) const;
 }; 
 
 template<typename T>
@@ -50,61 +52,73 @@ TfDense<T>::TfDense(tf::mutex* mu, tf::Tensor* tensor, Stream* stream):
     mu_(mu),
     tensor_(tensor),
     stream_(stream),
-    cpu_cache_(new T[tensor_->NumElements()])
+    cpu_cache_(tensor_->NumElements())
 {
 
 }
 
 template<typename T>
-std::map<Hostid, Bytes> TfDense<T>::Encoding(const Placement::Partitions& partitions) const {
+Bytes TfDense<T>::Encode() const {
+    std::lock_guard<std::mutex> lock(cpu_cache_mu_);
+    copy_to_cpu_memory(cpu_cache_.data());
+    return Bytes{(char*)&cpu_cache_[0], cpu_cache_.size() * sizeof(T)};
+}
+
+template<typename T>
+std::map<Hostid, Bytes> TfDense<T>::Encode(const Placement::Partitions& partitions) const {
     std::map<Hostid, Bytes> ret;
-    CopyToCpuCache_();
+    std::lock_guard<std::mutex> lock(cpu_cache_mu_);
+    copy_to_cpu_memory(cpu_cache_.data());
     for (auto& server_part: partitions) {
         Hostid server = server_part.first;
         auto& part = server_part.second;
-        ret[server] = std::string{(char*)&cpu_cache_[part.begin], (char*)&cpu_cache_[part.end]};
+        ret[server] = Bytes{(char*)&cpu_cache_[part.begin], (char*)&cpu_cache_[part.end]};
     }
     return ret;
 }
 
 template<typename T>
-void TfDense<T>::Decoding(const Bytes& bytes, size_t offset, size_t size) {
-    Assign(bytes.data(), offset, bytes.size()/sizeof(T));
+void TfDense<T>::Decode(const Bytes& bytes, size_t offset, DecodingType decoding_type) {
+    switch (decoding_type) {
+    case DecodingType::ASSIGN:
+        Assign(bytes, offset);
+        break;
+    case DecodingType::UPDATE:
+        Update(bytes, offset);
+        break;
+    default:
+        LOG(FATAL) << "Unkown decoding type.";
+    }
 }
 
 template<typename T>
 void TfDense<T>::Zerofy() {
+    std::lock_guard<std::mutex> lock(cpu_cache_mu_);
+    std::fill(cpu_cache_.begin(), cpu_cache_.end(), 0);
+    copy_to_gpu_memory(cpu_cache_.data());
 }
 
 template<typename T>
-void TfDense<T>::Assign(const void* data, size_t offset, size_t size) {
-    tf::mutex_lock l(*mu_);
-    const auto flat = tensor_->flat<T>();
-    if (size == -1) size = flat.size();
-    size_t num_bytes = sizeof(T) * size;
-    auto device_dst = DeviceMemory<T>::MakeFromByteSize(((T*)flat.data()) + offset, num_bytes);
-    stream_->parent()->SynchronousMemcpyH2D(data, num_bytes, &device_dst);
+void TfDense<T>::Assign(const Bytes& bytes, size_t offset) {
+    copy_to_gpu_memory(bytes.data(), bytes.size()/sizeof(T), offset);
 }
 
 template<typename T>
-void TfDense<T>::Update(const void* delta) {
-}
-
-template<typename T>
-const void *TfDense<T>::Serialize() const {
-    CopyToCpuCache_();
-    return cpu_cache_.get();
-}
-
-template<typename T>
-size_t TfDense<T>::GetSize() const {
-    return 0;
+void TfDense<T>::Update(const Bytes& bytes, size_t offset) {
+    size_t size = bytes.size() / sizeof(T);
+    std::lock_guard<std::mutex> lock(cpu_cache_mu_);
+    copy_to_cpu_memory(&cpu_cache_[offset], size, offset);
+    const T* data = reinterpret_cast<const T*>(bytes.data());
+    for (size_t i = offset; i < size; ++i) {
+        cpu_cache_[i] += data[i];
+    }
+    copy_to_gpu_memory(&cpu_cache_[offset], size, offset);
 }
 
 template<typename T>
 std::string TfDense<T>::ToString() const {
-    CopyToCpuCache_();
-
+    std::lock_guard<std::mutex> lock(cpu_cache_mu_);
+    copy_to_cpu_memory(cpu_cache_.data());
     std::stringstream ss;
     for(size_t i = 0; i < tensor_->NumElements(); ++i) {
         ss << cpu_cache_[i] << " ";
@@ -114,12 +128,24 @@ std::string TfDense<T>::ToString() const {
 }
 
 template<typename T>
-void TfDense<T>::CopyToCpuCache_() const {
+void TfDense<T>::copy_to_cpu_memory(void* dst, size_t size, size_t offset) const {
     tf::mutex_lock l(*mu_);
     const auto flat = tensor_->flat<T>();
-    size_t num_bytes = sizeof(T) * flat.size();
-    auto device_src = DeviceMemory<T>::MakeFromByteSize(static_cast<T*>(flat.data()), num_bytes);
-    stream_->parent()->SynchronousMemcpyD2H(device_src, num_bytes, cpu_cache_.get());
+    if (size == 0) size = flat.size();
+    size_t bytesize = size * sizeof(T);
+    auto device_src = DeviceMemory<T>::MakeFromByteSize(static_cast<T*>(flat.data()) + offset, bytesize);
+    stream_->parent()->SynchronousMemcpyD2H(device_src, bytesize, dst);
+
+}
+
+template<typename T>
+void TfDense<T>::copy_to_gpu_memory(const void* src, size_t size, size_t offset) {
+    tf::mutex_lock l(*mu_);
+    const auto flat = tensor_->flat<T>();
+    if (size == 0) size = flat.size();
+    size_t bytesize = size * sizeof(T);
+    auto device_dst = DeviceMemory<T>::MakeFromByteSize(static_cast<T*>(flat.data()) + offset, bytesize);
+    stream_->parent()->SynchronousMemcpyH2D(src, bytesize, &device_dst);
 }
 
 } /* woops */ 

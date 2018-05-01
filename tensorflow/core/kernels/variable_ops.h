@@ -88,11 +88,13 @@ class VariableOp : public OpKernel {
               auto mu = var->mu();
               auto tensor = var->tensor();
               auto stream = ctx->device()->tensorflow_gpu_device_info()->stream;
-              config.cache_constructor = [mu, tensor, stream](size_t size){
+              config.cache_constructor = [mu, tensor, stream](){
                   return std::unique_ptr<woops::Storage>(new woops::TfDense<float>(mu, tensor, stream));
               };
           }
-          config.server_storage_constructor = [](size_t size){
+
+          int size = shape_.num_elements();
+          config.server_storage_constructor = [size](){
               return std::unique_ptr<woops::Storage>(new woops::DenseStorage<float>(size));
           };
           woops::CreateTable(config);
