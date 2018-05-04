@@ -526,8 +526,7 @@ class ApplyGradientDescentPsOp : public OpKernel {
     for(size_t i = 0; i < size; ++i) {
         update[i] = local_alpha[0] * local_delta[i] * -1;
     }
-    woops::DenseStorage<float> s_update(size);
-    s_update.Assign(update.data(), update.size());
+    woops::DenseStorage<float> s_update(std::move(update));
     woops::Update(id_, s_update);
   }
  private:
