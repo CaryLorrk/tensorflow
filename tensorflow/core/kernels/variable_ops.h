@@ -28,7 +28,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/woops_util.h"
 #include "util/storage/dense_storage.h"
 #include "woops.h"
-#include "tf_dense.h"
+#include "tf_client_storage.h"
+#include "tf_transmit_buffer.h"
+#include "tf_server_storage.h"
 #include "tf_apply_buffer.h"
 
 namespace tensorflow {
@@ -89,17 +91,20 @@ class VariableOp : public OpKernel {
               auto mu = var->mu();
               auto tensor = var->tensor();
               auto stream = ctx->device()->tensorflow_gpu_device_info()->stream;
-              config.client_storage_constructor = [mu, tensor, stream](){
-                  return std::unique_ptr<woops::Storage>(new woops::TfDense<float>(mu, tensor, stream));
+              config.client_storage_constructor = [mu, tensor, stream]() -> woops::Storage* {
+                  return new woops::TfClientStorage<float>(mu, tensor, stream);
               };
           }
 
           int size = shape_.num_elements();
-          config.server_storage_constructor = [size](){
-              return std::unique_ptr<woops::Storage>(new woops::DenseStorage<float>(size));
+          config.transmit_buffer_constructor = [size]() -> woops::Storage* {
+              return new woops::TfTransmitBuffer<float>(size);
           };
-          config.apply_buffer_constructor = [size]() {
-              return std::unique_ptr<woops::Storage>(new woops::TfApplyBuffer<float>(size));
+          config.server_storage_constructor = [size]() -> woops::Storage* {
+              return new woops::TfServerStorage<float>(size);
+          };
+          config.apply_buffer_constructor = [size]() -> woops::Storage* {
+              return new woops::TfApplyBuffer<float>(size);
           };
           woops::CreateTable(config);
       }

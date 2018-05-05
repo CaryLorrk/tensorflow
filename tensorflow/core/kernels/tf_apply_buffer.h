@@ -12,7 +12,7 @@ public:
     TfApplyBuffer (size_t size): DenseStorage<T>(size) {}
 
 template<typename U>
-friend class TfDense;
+friend class TfClientStorage;
 };
 } /* woops */ 
 

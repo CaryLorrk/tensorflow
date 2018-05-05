@@ -24,15 +24,15 @@ namespace woops
 namespace tf = tensorflow;
 using namespace perftools::gputools;
 template<typename T>
-class TfDense: public Storage
+class TfClientStorage: public Storage
 {
 public:
-    TfDense(tf::mutex* mu, tf::Tensor* tensor, Stream* stream);
+    TfClientStorage(tf::mutex* mu, tf::Tensor* tensor, Stream* stream);
 
     void Sync(const Bytes& bytes) override;
     void Zerofy() override;
     Bytes Encode() const override;
-    std::map<Hostid, Bytes> Encode(const Placement::Partitions& partitions) const override;
+    std::map<Hostid, Bytes> Encode(const Placement::Partitions& partitions) override;
     void Decode(const Bytes& bytes, size_t offset = 0) override;
     void Assign(const Storage& data, size_t offset = 0) override;
     void Update(const Storage& delta, size_t offset = 0) override;
@@ -51,7 +51,7 @@ private:
 }; 
 
 template<typename T>
-TfDense<T>::TfDense(tf::mutex* mu, tf::Tensor* tensor, Stream* stream):
+TfClientStorage<T>::TfClientStorage(tf::mutex* mu, tf::Tensor* tensor, Stream* stream):
     mu_(mu),
     tensor_(tensor),
     stream_(stream),
@@ -61,21 +61,21 @@ TfDense<T>::TfDense(tf::mutex* mu, tf::Tensor* tensor, Stream* stream):
 }
 
 template<typename T>
-void TfDense<T>::Sync(const Bytes& bytes) {
+void TfClientStorage<T>::Sync(const Bytes& bytes) {
     size_t size = bytes.size() / sizeof(T);
     copy_to_gpu_memory(bytes.data(), size);
 
 }
 
 template<typename T>
-Bytes TfDense<T>::Encode() const {
+Bytes TfClientStorage<T>::Encode() const {
     std::lock_guard<std::mutex> lock(cpu_cache_mu_);
     copy_to_cpu_memory(cpu_cache_.data());
     return Bytes{(char*)&cpu_cache_[0], cpu_cache_.size() * sizeof(T)};
 }
 
 template<typename T>
-std::map<Hostid, Bytes> TfDense<T>::Encode(const Placement::Partitions& partitions) const {
+std::map<Hostid, Bytes> TfClientStorage<T>::Encode(const Placement::Partitions& partitions) {
     std::map<Hostid, Bytes> ret;
     std::lock_guard<std::mutex> lock(cpu_cache_mu_);
     copy_to_cpu_memory(cpu_cache_.data());
@@ -88,32 +88,32 @@ std::map<Hostid, Bytes> TfDense<T>::Encode(const Placement::Partitions& partitio
 }
 
 template<typename T>
-void TfDense<T>::Decode(const Bytes& bytes, size_t offset) {
+void TfClientStorage<T>::Decode(const Bytes& bytes, size_t offset) {
     size_t size = bytes.size() / sizeof(T);
     const T* data = reinterpret_cast<const T*>(bytes.data());
     update(data, size, offset);
 }
 
 template<typename T>
-void TfDense<T>::Zerofy() {
+void TfClientStorage<T>::Zerofy() {
     std::lock_guard<std::mutex> lock(cpu_cache_mu_);
     std::fill(cpu_cache_.begin(), cpu_cache_.end(), 0);
     copy_to_gpu_memory(cpu_cache_.data());
 }
 
 template<typename T>
-void TfDense<T>::Assign(const Storage& data, size_t offset) {
+void TfClientStorage<T>::Assign(const Storage& data, size_t offset) {
     LOG(FATAL) << "Unimplemented";
 }
 
 template<typename T>
-void TfDense<T>::Update(const Storage& delta, size_t offset) {
+void TfClientStorage<T>::Update(const Storage& delta, size_t offset) {
     auto&& t_delta = reinterpret_cast<const TfApplyBuffer<T>&>(delta);
     update(t_delta.data_.data(), t_delta.data_.size(), offset);
 }
 
 template<typename T>
-std::string TfDense<T>::ToString() const {
+std::string TfClientStorage<T>::ToString() const {
     std::lock_guard<std::mutex> lock(cpu_cache_mu_);
     copy_to_cpu_memory(cpu_cache_.data());
     std::stringstream ss;
@@ -125,7 +125,7 @@ std::string TfDense<T>::ToString() const {
 }
 
 template<typename T>
-void TfDense<T>::copy_to_cpu_memory(void* dst, size_t size, size_t offset) const {
+void TfClientStorage<T>::copy_to_cpu_memory(void* dst, size_t size, size_t offset) const {
     tf::mutex_lock l(*mu_);
     auto&& flat = tensor_->flat<T>();
     if (size == 0) size = flat.size();
@@ -137,7 +137,7 @@ void TfDense<T>::copy_to_cpu_memory(void* dst, size_t size, size_t offset) const
 
 // the caller needs to hold a lock of cpu_cache_mu_
 template<typename T>
-void TfDense<T>::copy_to_gpu_memory(const void* src, size_t size, size_t offset) {
+void TfClientStorage<T>::copy_to_gpu_memory(const void* src, size_t size, size_t offset) {
     tf::mutex_lock l(*mu_);
     auto&& flat = tensor_->flat<T>();
     if (size == 0) size = flat.size();
@@ -147,7 +147,7 @@ void TfDense<T>::copy_to_gpu_memory(const void* src, size_t size, size_t offset)
 }
 
 template<typename T>
-void TfDense<T>::update(const T* data, size_t size, size_t offset) {
+void TfClientStorage<T>::update(const T* data, size_t size, size_t offset) {
     std::lock_guard<std::mutex> lock(cpu_cache_mu_);
     copy_to_cpu_memory(&cpu_cache_[offset], size, offset);
     auto&& begin_it = std::next(cpu_cache_.begin(), offset);
