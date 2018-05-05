@@ -28,10 +28,11 @@ class TfDense: public Storage
 public:
     TfDense(tf::mutex* mu, tf::Tensor* tensor, Stream* stream);
 
+    void Sync(const Bytes& bytes) override;
     void Zerofy() override;
     Bytes Encode() const override;
     std::map<Hostid, Bytes> Encode(const Placement::Partitions& partitions) const override;
-    void Decode(const Bytes& bytes, size_t offset = 0, DecodingType decoding_type = DecodingType::UPDATE) override;
+    void Decode(const Bytes& bytes, size_t offset = 0) override;
     void Assign(const Storage& bytes, size_t offset = 0) override;
     void Update(const Storage& bytes, size_t offset = 0) override;
     std::string ToString() const override;
@@ -59,6 +60,13 @@ TfDense<T>::TfDense(tf::mutex* mu, tf::Tensor* tensor, Stream* stream):
 }
 
 template<typename T>
+void TfDense<T>::Sync(const Bytes& bytes) {
+    size_t size = bytes.size() / sizeof(T);
+    copy_to_gpu_memory(bytes.data(), size);
+
+}
+
+template<typename T>
 Bytes TfDense<T>::Encode() const {
     std::lock_guard<std::mutex> lock(cpu_cache_mu_);
     copy_to_cpu_memory(cpu_cache_.data());
@@ -79,20 +87,10 @@ std::map<Hostid, Bytes> TfDense<T>::Encode(const Placement::Partitions& partitio
 }
 
 template<typename T>
-void TfDense<T>::Decode(const Bytes& bytes, size_t offset, DecodingType decoding_type) {
+void TfDense<T>::Decode(const Bytes& bytes, size_t offset) {
     size_t size = bytes.size() / sizeof(T);
-    switch (decoding_type) {
-    case DecodingType::ASSIGN:
-        copy_to_gpu_memory(bytes.data(), size, offset);
-        break;
-    case DecodingType::UPDATE: {
-        const T* data = reinterpret_cast<const T*>(bytes.data());
-        update(data, size, offset);
-    }
-        break;
-    default:
-        LOG(FATAL) << "Unkown decoding type.";
-    }
+    const T* data = reinterpret_cast<const T*>(bytes.data());
+    update(data, size, offset);
 }
 
 template<typename T>
