@@ -514,11 +514,11 @@ class ApplyGradientDescentPsOp : public OpKernel {
     OP_REQUIRES(ctx, IsLegacyScalar(alpha.shape()),
             errors::InvalidArgument("alpha is not a scalar: ",
                 alpha.shape().DebugString()));
-    const auto flat_alpha = alpha.flat<T>();
+    const auto&& flat_alpha = alpha.flat<T>();
     const T* local_alpha = (T*)flat_alpha.data();
 
     const Tensor& delta = ctx->input(1);
-    const auto flat_delta = delta.flat<T>();
+    const auto&& flat_delta = delta.flat<T>();
     const T* local_delta = (T*)flat_delta.data();
 
     size_t size = delta.NumElements();
