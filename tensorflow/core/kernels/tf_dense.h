@@ -14,9 +14,10 @@
 #include "util/storage/storage.h"
 #include "util/logging.h"
 
+#include "tf_apply_buffer.h"
+
 #include <sstream>
 #include <iostream>
-
 
 namespace woops
 {
@@ -33,8 +34,8 @@ public:
     Bytes Encode() const override;
     std::map<Hostid, Bytes> Encode(const Placement::Partitions& partitions) const override;
     void Decode(const Bytes& bytes, size_t offset = 0) override;
-    void Assign(const Storage& bytes, size_t offset = 0) override;
-    void Update(const Storage& bytes, size_t offset = 0) override;
+    void Assign(const Storage& data, size_t offset = 0) override;
+    void Update(const Storage& delta, size_t offset = 0) override;
     std::string ToString() const override;
 
 private:
@@ -106,8 +107,9 @@ void TfDense<T>::Assign(const Storage& data, size_t offset) {
 }
 
 template<typename T>
-void TfDense<T>::Update(const Storage& bytes, size_t offset) {
-    LOG(FATAL) << "Unimplemented";
+void TfDense<T>::Update(const Storage& delta, size_t offset) {
+    auto&& t_delta = reinterpret_cast<const TfApplyBuffer<T>&>(delta);
+    update(t_delta.data_.data(), t_delta.data_.size(), offset);
 }
 
 template<typename T>
@@ -133,7 +135,7 @@ void TfDense<T>::copy_to_cpu_memory(void* dst, size_t size, size_t offset) const
 
 }
 
-// need to hold lock of cpu_cache_mu_
+// the caller needs to hold a lock of cpu_cache_mu_
 template<typename T>
 void TfDense<T>::copy_to_gpu_memory(const void* src, size_t size, size_t offset) {
     tf::mutex_lock l(*mu_);

@@ -3745,8 +3745,8 @@ cc_library(
 )
 
 cc_library(
-    name="tf_dense",
-    hdrs= ["tf_dense.h"],
+    name="tf_storage",
+    hdrs= ["tf_dense.h", "tf_apply_buffer.h"],
     deps= ["//third_party/eigen3",
           "//tensorflow/core:framework",
           "@woops_repo//:woops"],
@@ -3773,7 +3773,7 @@ STATE_DEPS = [
     "//tensorflow/core:state_ops_op_lib",
     "@woops_repo//:woops",
     ":woops_util",
-    ":tf_dense",
+    ":tf_storage",
 ] + if_sycl(["//tensorflow/core:sycl_runtime"])
 
 tf_kernel_library(
