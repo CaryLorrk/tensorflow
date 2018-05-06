@@ -3746,7 +3746,7 @@ cc_library(
 
 cc_library(
     name="tf_storage",
-    hdrs= ["tf_client_storage.h", "tf_transmit_buffer.h", "tf_server_storage.h", "tf_apply_buffer.h"],
+    hdrs= glob(["woops_tf_*.h"]),
     deps= ["//third_party/eigen3",
           "//tensorflow/core:framework",
           "@woops_repo//:woops"],

@@ -14,7 +14,7 @@
 #include "util/storage/storage.h"
 #include "util/logging.h"
 
-#include "tf_apply_buffer.h"
+#include "woops_tf_apply_buffer.h"
 
 #include <sstream>
 #include <iostream>
@@ -122,6 +122,7 @@ void TfClientStorage<T>::Assign(MAYBE_UNUSED const Storage& data) {
 template<typename T>
 void TfClientStorage<T>::Update(MAYBE_UNUSED const Storage& delta) {
     auto&& t_delta = reinterpret_cast<const TfApplyBuffer<T>&>(delta);
+    std::lock_guard<std::mutex> delta_lock(t_delta.mu_);
     std::lock_guard<std::mutex> cpu_lock(cpu_cache_mu_);
     std::lock_guard<tf::mutex> lock(*mu_);
     update(t_delta.data_.data(), t_delta.data_.size());
