@@ -18,9 +18,7 @@ public:
         this->zerofy();
         return ret;
     }
-    void Decode(
-            MAYBE_UNUSED Hostid host,
-            const Bytes& bytes) override {
+    void Decode(Hostid host, const Bytes& bytes) override {
         if (host == Lib::ThisHost()) return;
         const T* data = reinterpret_cast<const T*>(bytes.data());
         size_t size = bytes.size() / sizeof(T);

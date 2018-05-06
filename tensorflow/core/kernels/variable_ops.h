@@ -29,10 +29,15 @@ limitations under the License.
 #include "util/storage/dense_storage.h"
 #include "woops.h"
 
-#include "woops_tf_client_storage.h"
-#include "woops_tf_transmit_buffer.h"
-#include "woops_tf_server_storage.h"
-#include "woops_tf_apply_buffer.h"
+//#include "woops_tf_client_storage.h"
+//#include "woops_tf_transmit_buffer.h"
+//#include "woops_tf_server_storage.h"
+//#include "woops_tf_apply_buffer.h"
+
+#include "woops_tf_compress_client_storage.h"
+#include "woops_tf_compress_transmit_buffer.h"
+#include "woops_tf_compress_server_storage.h"
+#include "woops_tf_compress_apply_buffer.h"
 
 namespace tensorflow {
 
