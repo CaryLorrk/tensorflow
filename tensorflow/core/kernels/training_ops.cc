@@ -522,7 +522,7 @@ class ApplyGradientDescentPsOp : public OpKernel {
     const T* local_delta = (T*)flat_delta.data();
 
     size_t size = delta.NumElements();
-    auto update = std::vector<T>(size);
+    std::vector<T> update(size);
     for(size_t i = 0; i < size; ++i) {
         update[i] = local_alpha[0] * local_delta[i] * -1;
     }

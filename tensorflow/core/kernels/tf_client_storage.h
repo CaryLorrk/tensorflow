@@ -29,13 +29,15 @@ class TfClientStorage: public Storage
 public:
     TfClientStorage(tf::mutex* mu, tf::Tensor* tensor, Stream* stream);
 
-    void Sync(const Bytes& bytes) override;
     void Zerofy() override;
-    Bytes Encode() const override;
+    Bytes Serialize() const override;
+    void Deserialize(const Bytes& bytes) override;
+    Bytes Encode() override;
     std::map<Hostid, Bytes> Encode(const Placement::Partitions& partitions) override;
-    void Decode(const Bytes& bytes, size_t offset = 0) override;
-    void Assign(const Storage& data, size_t offset = 0) override;
-    void Update(const Storage& delta, size_t offset = 0) override;
+    void Decode(Hostid host, const Bytes& bytes) override;
+    void Decode(const Bytes& bytes, const Placement::Partition& partition) override;
+    void Assign(const Storage& data) override;
+    void Update(const Storage& delta) override;
     std::string ToString() const override;
 
 private:
@@ -43,7 +45,7 @@ private:
     tf::Tensor* tensor_;
     Stream* stream_;
     mutable std::vector<T> cpu_cache_;
-    mutable std::mutex cpu_cache_mu_;
+    mutable std::mutex cpu_cache_mu_; // lock before mu_
 
     void copy_to_gpu_memory(const void* src, size_t size = 0, size_t offset = 0);
     void copy_to_cpu_memory(void* dst, size_t size = 0, size_t offset = 0) const;
@@ -61,61 +63,77 @@ TfClientStorage<T>::TfClientStorage(tf::mutex* mu, tf::Tensor* tensor, Stream* s
 }
 
 template<typename T>
-void TfClientStorage<T>::Sync(const Bytes& bytes) {
-    size_t size = bytes.size() / sizeof(T);
-    copy_to_gpu_memory(bytes.data(), size);
-
-}
-
-template<typename T>
-Bytes TfClientStorage<T>::Encode() const {
-    std::lock_guard<std::mutex> lock(cpu_cache_mu_);
-    copy_to_cpu_memory(cpu_cache_.data());
-    return Bytes{(char*)&cpu_cache_[0], cpu_cache_.size() * sizeof(T)};
-}
-
-template<typename T>
-std::map<Hostid, Bytes> TfClientStorage<T>::Encode(const Placement::Partitions& partitions) {
-    std::map<Hostid, Bytes> ret;
-    std::lock_guard<std::mutex> lock(cpu_cache_mu_);
-    copy_to_cpu_memory(cpu_cache_.data());
-    for (auto&& server_part: partitions) {
-        Hostid server = server_part.first;
-        auto&& part = server_part.second;
-        ret[server] = Bytes{(char*)&cpu_cache_[part.begin], (char*)&cpu_cache_[part.end]};
-    }
-    return ret;
-}
-
-template<typename T>
-void TfClientStorage<T>::Decode(const Bytes& bytes, size_t offset) {
-    size_t size = bytes.size() / sizeof(T);
-    const T* data = reinterpret_cast<const T*>(bytes.data());
-    update(data, size, offset);
-}
-
-template<typename T>
 void TfClientStorage<T>::Zerofy() {
-    std::lock_guard<std::mutex> lock(cpu_cache_mu_);
-    std::fill(cpu_cache_.begin(), cpu_cache_.end(), 0);
-    copy_to_gpu_memory(cpu_cache_.data());
-}
-
-template<typename T>
-void TfClientStorage<T>::Assign(const Storage& data, size_t offset) {
     LOG(FATAL) << "Unimplemented";
 }
 
 template<typename T>
-void TfClientStorage<T>::Update(const Storage& delta, size_t offset) {
+Bytes TfClientStorage<T>::Serialize() const {
+    std::lock_guard<std::mutex> cpu_lock{ cpu_cache_mu_ };
+    {
+        std::lock_guard<tf::mutex> lock(*mu_);
+        copy_to_cpu_memory(cpu_cache_.data());
+    }
+    return Bytes{(Byte*)&cpu_cache_[0], cpu_cache_.size() * sizeof(T)};
+}
+
+template<typename T>
+void TfClientStorage<T>::Deserialize(const Bytes& bytes) {
+    size_t size = bytes.size() / sizeof(T);
+    std::lock_guard<tf::mutex> lock(*mu_);
+    copy_to_gpu_memory(bytes.data(), size);
+}
+
+template<typename T>
+Bytes TfClientStorage<T>::Encode() {
+    Bytes ret;
+    LOG(FATAL) << "Unimplemented";
+    return ret;
+}
+
+template<typename T>
+std::map<Hostid, Bytes> TfClientStorage<T>::Encode(
+        MAYBE_UNUSED const Placement::Partitions& partitions) {
+    std::map<Hostid, Bytes> ret;
+    LOG(FATAL) << "Unimplemented";
+    return ret;
+}
+
+template<typename T>
+void TfClientStorage<T>::Decode(
+        MAYBE_UNUSED Hostid host,
+        MAYBE_UNUSED const Bytes& bytes) {
+    LOG(FATAL) << "Unimplemented";
+}
+
+template<typename T>
+void TfClientStorage<T>::Decode(
+        MAYBE_UNUSED const Bytes& bytes,
+        MAYBE_UNUSED const Placement::Partition& partition) {
+    LOG(FATAL) << "Unimplemented";
+}
+
+
+template<typename T>
+void TfClientStorage<T>::Assign(MAYBE_UNUSED const Storage& data) {
+    LOG(FATAL) << "Unimplemented";
+}
+
+template<typename T>
+void TfClientStorage<T>::Update(MAYBE_UNUSED const Storage& delta) {
     auto&& t_delta = reinterpret_cast<const TfApplyBuffer<T>&>(delta);
-    update(t_delta.data_.data(), t_delta.data_.size(), offset);
+    std::lock_guard<std::mutex> cpu_lock(cpu_cache_mu_);
+    std::lock_guard<tf::mutex> lock(*mu_);
+    update(t_delta.data_.data(), t_delta.data_.size());
 }
 
 template<typename T>
 std::string TfClientStorage<T>::ToString() const {
     std::lock_guard<std::mutex> lock(cpu_cache_mu_);
-    copy_to_cpu_memory(cpu_cache_.data());
+    {
+        std::lock_guard<tf::mutex> lock(*mu_);
+        copy_to_cpu_memory(cpu_cache_.data());
+    }
     std::stringstream ss;
     for(size_t i = 0; i < tensor_->NumElements(); ++i) {
         ss << cpu_cache_[i] << " ";
@@ -124,21 +142,19 @@ std::string TfClientStorage<T>::ToString() const {
     return ss.str();
 }
 
+// caller need to hold a lock of mu_
 template<typename T>
 void TfClientStorage<T>::copy_to_cpu_memory(void* dst, size_t size, size_t offset) const {
-    tf::mutex_lock l(*mu_);
     auto&& flat = tensor_->flat<T>();
     if (size == 0) size = flat.size();
     size_t bytesize = size * sizeof(T);
     auto device_src = DeviceMemory<T>::MakeFromByteSize(static_cast<T*>(flat.data()) + offset, bytesize);
     stream_->parent()->SynchronousMemcpyD2H(device_src, bytesize, dst);
-
 }
 
-// the caller needs to hold a lock of cpu_cache_mu_
+// caller need to hold a lock of mu_
 template<typename T>
 void TfClientStorage<T>::copy_to_gpu_memory(const void* src, size_t size, size_t offset) {
-    tf::mutex_lock l(*mu_);
     auto&& flat = tensor_->flat<T>();
     if (size == 0) size = flat.size();
     size_t bytesize = size * sizeof(T);
@@ -146,12 +162,12 @@ void TfClientStorage<T>::copy_to_gpu_memory(const void* src, size_t size, size_t
     stream_->parent()->SynchronousMemcpyH2D(src, bytesize, &device_dst);
 }
 
+// caller need to hold locks of mu_ and cpu_cache_mu_
 template<typename T>
 void TfClientStorage<T>::update(const T* data, size_t size, size_t offset) {
-    std::lock_guard<std::mutex> lock(cpu_cache_mu_);
     copy_to_cpu_memory(&cpu_cache_[offset], size, offset);
-    auto&& begin_it = std::next(cpu_cache_.begin(), offset);
-    std::transform(data, data + size, begin_it, begin_it, std::plus<T>());
+    auto&& first = std::next(cpu_cache_.begin(), offset);
+    std::transform(data, data + size, first, first, std::plus<T>());
     copy_to_gpu_memory(&cpu_cache_[offset], size, offset);
 }
 
