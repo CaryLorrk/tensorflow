@@ -24,7 +24,8 @@ public:
         this->zerofy();
         return ret;
     }
-    void Decode(Hostid host, const Bytes& bytes) {
+
+    void Decode(Hostid host, const Bytes& bytes) override {
         if (host == Lib::ThisHost()) return;
         std::lock_guard<std::mutex> lock(this->mu_);
         auto it = bytes.begin();
