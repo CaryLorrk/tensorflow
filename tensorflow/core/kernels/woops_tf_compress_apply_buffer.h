@@ -24,7 +24,7 @@ public:
     }
 
 template<typename U>
-friend class TfClientStorage;
+friend class TfWorkerStorage;
 };
 } /* woops */ 
 

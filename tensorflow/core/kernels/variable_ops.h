@@ -29,12 +29,12 @@ limitations under the License.
 #include "util/storage/dense_storage.h"
 #include "woops.h"
 
-//#include "woops_tf_client_storage.h"
+//#include "woops_tf_worker_storage.h"
 //#include "woops_tf_transmit_buffer.h"
 //#include "woops_tf_server_storage.h"
 //#include "woops_tf_apply_buffer.h"
 
-#include "woops_tf_compress_client_storage.h"
+#include "woops_tf_compress_worker_storage.h"
 #include "woops_tf_compress_transmit_buffer.h"
 #include "woops_tf_compress_server_storage.h"
 #include "woops_tf_compress_apply_buffer.h"
@@ -70,6 +70,7 @@ class VariableOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     mutex_lock l(init_mu_);
+    Var* var;
     if (!initialized_) {
       OP_REQUIRES_OK(
           ctx,
@@ -97,8 +98,8 @@ class VariableOp : public OpKernel {
               auto mu = var->mu();
               auto tensor = var->tensor();
               auto stream = ctx->device()->tensorflow_gpu_device_info()->stream;
-              config.client_storage_constructor = [mu, tensor, stream]() -> woops::Storage* {
-                  return new woops::TfClientStorage<float>(mu, tensor, stream);
+              config.worker_storage_constructor = [mu, tensor, stream]() -> woops::Storage* {
+                  return new woops::TfWorkerStorage<float>(mu, tensor, stream);
               };
           }
 
@@ -115,20 +116,20 @@ class VariableOp : public OpKernel {
           woops::CreateTable(config);
       }
       initialized_ = true;
-    }
-    auto creator = [this](Var** var) {
-      *var = new Var(dtype_);
-      (*var)->tensor()->set_shape(shape_);
-      return Status::OK();
-    };
+    } else {
+        auto creator = [this](Var** var) {
+            *var = new Var(dtype_);
+            (*var)->tensor()->set_shape(shape_);
+            return Status::OK();
+        };
 
-    Var* var;
-    OP_REQUIRES_OK(ctx,
-                   cinfo_.resource_manager()->LookupOrCreate<Var>(
-                       cinfo_.container(), cinfo_.name(), &var, creator));
+        OP_REQUIRES_OK(ctx,
+                cinfo_.resource_manager()->LookupOrCreate<Var>(
+                    cinfo_.container(), cinfo_.name(), &var, creator));
 
-    if (trainable_) {
-      woops::Sync(id_);
+        if (trainable_) {
+            woops::Sync(id_);
+        }
     }
 
     // Output a reference to our tensor, so it may be updated.
