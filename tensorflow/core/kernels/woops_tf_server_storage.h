@@ -11,15 +11,20 @@ template<typename T>
 class TfServerStorage: public DenseStorage<T>
 {
 public:
-    TfServerStorage (size_t size): DenseStorage<T>(size) {}
+    TfServerStorage (Tableid id) {
+        auto&& partition = Lib::Placement().GetPartitions(id).at(Lib::ThisHost());
+        this->data_.resize(partition.end - partition.begin);
+    }
+
     Bytes Encode() override {
         std::lock_guard<std::mutex> lock(this->mu_);
         Bytes ret = Bytes{(Byte*)this->data_.data(), this->data_.size() * sizeof(T)};
         this->zerofy();
         return ret;
     }
-    void Decode(Hostid host, const Bytes& bytes) override {
-        if (host == Lib::ThisHost()) return;
+
+    void Decode(Hostid from, Hostid to, const Bytes& bytes) override {
+        if (from == to) return;
         const T* data = reinterpret_cast<const T*>(bytes.data());
         size_t size = bytes.size() / sizeof(T);
         std::lock_guard<std::mutex> lock(this->mu_);

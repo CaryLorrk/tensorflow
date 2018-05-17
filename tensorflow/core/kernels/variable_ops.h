@@ -98,19 +98,19 @@ class VariableOp : public OpKernel {
               auto mu = var->mu();
               auto tensor = var->tensor();
               auto stream = ctx->device()->tensorflow_gpu_device_info()->stream;
-              config.worker_storage_constructor = [mu, tensor, stream]() -> woops::Storage* {
+              config.worker_storage_constructor = [mu, tensor, stream](woops::Tableid) {
                   return new woops::TfWorkerStorage<float>(mu, tensor, stream);
               };
           }
 
           int size = shape_.num_elements();
-          config.transmit_buffer_constructor = [size]() -> woops::Storage* {
+          config.transmit_buffer_constructor = [size](woops::Tableid) {
               return new woops::TfTransmitBuffer<float>(size);
           };
-          config.server_storage_constructor = [size]() -> woops::Storage* {
-              return new woops::TfServerStorage<float>(size);
+          config.server_storage_constructor = [](woops::Tableid id) {
+              return new woops::TfServerStorage<float>(id);
           };
-          config.apply_buffer_constructor = [size]() -> woops::Storage* {
+          config.apply_buffer_constructor = [size](woops::Tableid) {
               return new woops::TfApplyBuffer<float>(size);
           };
           woops::CreateTable(config);

@@ -11,7 +11,12 @@ template<typename T>
 class TfServerStorage: public DenseStorage<T>
 {
 public:
-    TfServerStorage (size_t size): DenseStorage<T>(size) {}
+    TfServerStorage (Tableid id) {
+        auto&& partition = Lib::Placement().GetPartitions(id).at(Lib::ThisHost());
+        this->data_.resize(partition.end - partition.begin);
+        offset_ = partition.begin;
+    }
+
     Bytes Encode() override {
         constexpr int COMPRESSION_RATIO = 100;
         std::lock_guard<std::mutex> lock(this->mu_);
@@ -25,8 +30,8 @@ public:
         });
         Bytes ret;
         for (auto it = index.begin(); it != middle; ++it) {
-            const ParamIndex& idx = *it;
-            T& val = this->data_[idx];
+            T& val = this->data_[*it];
+            ParamIndex idx = *it + offset_;
             ret.append((Byte*)&(idx), (Byte*)(&(idx) + 1));
             ret.append((Byte*)&(val), (Byte*)(&(val) + 1));
             val = 0;
@@ -40,10 +45,12 @@ public:
         while (it != bytes.end()) {
             ParamIndex idx = *reinterpret_cast<const ParamIndex*>(&(*it));
             std::advance(it, sizeof(ParamIndex)/sizeof(Byte));
-            this->data_[idx] += *reinterpret_cast<const T*>(&(*it));
+            this->data_[idx - offset_] += *reinterpret_cast<const T*>(&(*it));
             std::advance(it, sizeof(T)/sizeof(Byte));
         }
     }
+private:
+    size_t offset_;
 };
 } /* woops */ 
 
