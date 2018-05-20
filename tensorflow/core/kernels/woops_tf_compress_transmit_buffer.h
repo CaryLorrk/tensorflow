@@ -24,22 +24,15 @@ public:
         
         auto&& kv = partitions.begin();
         std::map<Hostid, Bytes> ret;
-        ret[kv->first] = Bytes();
         for (auto it = index.begin(); it != middle; ++it) {
             const ParamIndex& idx = *it;
             T& val = this->data_[idx];
 
-            while (idx >= kv->second.end) {
-                ++kv;
-                ret[kv->first] = Bytes();
-            };
+            while (idx >= kv->second.end) ++kv;
             Hostid server = kv->first;
             ret[server].append((Byte*)&(idx), (Byte*)(&(idx) + 1));
             ret[server].append((Byte*)&(val), (Byte*)(&(val) + 1));
             val = 0;
-        }
-        for (; kv != partitions.end(); ++kv) {
-            ret[kv->first] = Bytes();
         }
         return ret;
     }
