@@ -21,6 +21,8 @@ public:
             auto&& data = this->data_;
             return std::abs(data[lhs]) > std::abs(data[rhs]);
         });
+
+        std::sort(index.begin(), middle);
         
         auto&& kv = partitions.begin();
         std::map<Hostid, Bytes> ret;
